@@ -1,31 +1,48 @@
-from pynput import keyboard
+# send_to_firebase.py
+import os
+from datetime import datetime
+import firebase_admin
+from firebase_admin import credentials, db
+from datetime import datetime, timezone
+datetime.now(timezone.utc)
 
-# List to store keys
-typed_keys = []
 
-def on_press(key):
-    try:
-        # Record the key
-        typed_keys.append(key.char)
-    except AttributeError:
-        # Handle special keys (like space, enter, etc.)
-        if key == keyboard.Key.space:
-            typed_keys.append(" ")
-        elif key == keyboard.Key.enter:
-            typed_keys.append("\n")
-        else:
-            typed_keys.append(f"<{key.name}>")
 
-    # Print current text live
-    print("".join(typed_keys))
 
-def on_release(key):
-    # Stop tracking if ESC is pressed
-    if key == keyboard.Key.esc:
-        print("\nTracking stopped.")
-        return False
+# --- CONFIG: change these or set environment variables ---
+KEY_PATH = os.environ.get("FIREBASE_KEY_PATH", "firebase-key.json")
+DB_URL  = os.environ.get("FIREBASE_DB_URL", "https://keylogger-v1-default-rtdb.firebaseio.com/k/")
 
-# Start the listener
-print("Start typing (Press ESC to stop):")
-with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
-    listener.join()
+# --- Initialize Firebase Admin SDK ---
+if not os.path.isfile(KEY_PATH):
+    raise FileNotFoundError(f"Service account key not found at: {KEY_PATH}")
+
+cred = credentials.Certificate(KEY_PATH)
+firebase_admin.initialize_app(cred, {'databaseURL': DB_URL})
+
+# Reference (node) where typing entries will be stored
+ref = db.reference('typing_log')   # will create /typing_log in your DB
+
+def main():
+    print("Type text and press Enter to save it to Firebase.")
+    print("Type 'exit' or 'quit' to stop.")
+    while True:
+        user_input = input("> ")
+        if user_input.strip().lower() in ('exit', 'quit'):
+            print("Goodbye.")
+            break
+
+        entry = {
+            "text_input": user_input,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat()
+        }
+
+        # push to Firebase (each push creates a unique key)
+        try:
+            ref.push(entry)
+            print("Saved ✅")
+        except Exception as e:
+            print("Failed to save:", e)
+
+if __name__ == "__main__":
+    main()
